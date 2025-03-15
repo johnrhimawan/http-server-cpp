@@ -56,10 +56,40 @@ int main(int argc, char **argv) {
   cout << "Waiting for a client to connect...\n";
   
   int client = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  string message = "HTTP/1.1 200 OK\r\n\r\n";
-  send(client, message.c_str(), message.size(), 0);
+  if (client < 0) {
+    cerr << "Failed to accept client connection\n";
+    return 1;
+  }
   cout << "Client connected\n";
-  
+
+  char buffer[1024] = {0};
+  ssize_t bytes_received = recv(client, buffer, sizeof(buffer) - 1, 0);
+
+  if (bytes_received > 0) {
+    buffer[bytes_received] = '\0';
+    string request(buffer);
+    string response;
+
+    cout << "Received request:\n" << request << endl;
+
+    ssize_t start = request.find("GET /");
+    ssize_t end = request.find(" HTTP/1.1");
+
+    string path = "";
+    if (start != string::npos && end != string::npos) {
+      path = request.substr(start + 4, end - (start + 4));
+    }
+
+    if (path == "/") {
+      response = "HTTP/1.1 200 OK\r\n\r\n";
+    } else {
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    }
+
+    send(client, response.c_str(), response.size(), 0);
+  }
+
+  close(client);
   close(server_fd);
 
   return 0;
