@@ -7,18 +7,66 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
+#include <netinet/in.h>
 
 using namespace std;
+
+constexpr int PORT = 4221;
+constexpr int BACKLOG = 5;
+constexpr int BUFFER_SIZE = 4096;
+
+void handle_client(int client_fd) {
+  char buffer[BUFFER_SIZE] = {0};
+  ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+
+  if (bytes_received <= 0) {
+    cerr << "Failed to receive data or client disconnected.\n";
+    close(client_fd);
+    return;
+  }
+
+  buffer[bytes_received] = '\0';
+  string request(buffer);
+  cout << "Received request:\n" << request << endl;
+
+  istringstream request_stream(request);
+  string method, path, http_version;
+  request_stream >> method >> path >> http_version;
+
+  string response;
+
+  if (method != "GET") {
+      response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
+  } else if (path == "/") {
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
+  } else if (path.find("/echo/") == 0) {
+      std::string content = path.substr(6);
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
+              + std::to_string(content.size()) + "\r\n\r\n" + content;
+  } else if (path == "/user-agent") {
+      size_t agent_start = request.find("User-Agent: ");
+      if (agent_start != std::string::npos) {
+          agent_start += 12;
+          size_t agent_end = request.find("\r\n", agent_start);
+          std::string user_agent = request.substr(agent_start, agent_end - agent_start);
+          response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
+                  + std::to_string(user_agent.size()) + "\r\n\r\n" + user_agent;
+      } else {
+          response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+      }
+  } else {
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  send(client_fd, response.c_str(), response.size(), 0);
+  close(client_fd);
+}
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   cout << unitbuf;
   cerr << unitbuf;
-  
-  // You can use print statements as follows for debugging, they'll be visible when running tests.
-  cout << "Logs from your program will appear here!\n";
-
-  // Uncomment this block to pass the first stage
   
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
@@ -37,68 +85,35 @@ int main(int argc, char **argv) {
   struct sockaddr_in server_addr;
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(4221);
+  server_addr.sin_port = htons(PORT);
   
   if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
-    cerr << "Failed to bind to port 4221\n";
+    cerr << "Failed to bind to port " << PORT << "\n";
     return 1;
   }
   
-  int connection_backlog = 5;
-  if (listen(server_fd, connection_backlog) != 0) {
-    cerr << "listen failed\n";
+  if (listen(server_fd, BACKLOG) != 0) {
+    cerr << "Listen failed\n";
     return 1;
   }
   
-  struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
-  
+  cout << "Server is listening on port " << PORT << "...\n";
   cout << "Waiting for a client to connect...\n";
-  
-  int client = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  if (client < 0) {
-    cerr << "Failed to accept client connection\n";
-    return 1;
-  }
-  cout << "Client connected\n";
 
-  char buffer[1024] = {0};
-  ssize_t bytes_received = recv(client, buffer, sizeof(buffer) - 1, 0);
-
-  if (bytes_received > 0) {
-    buffer[bytes_received] = '\0';
-    string request(buffer);
-    string response;
-
-    cout << "Received request:\n" << request << endl;
-
-    ssize_t start = request.find("GET /");
-    ssize_t end = request.find(" HTTP/1.1");
-
-    string path = "";
-    if (start != string::npos && end != string::npos) {
-      path = request.substr(start + 4, end - (start + 4));
+  while (true) {
+    struct sockaddr_in client_addr;
+    int client_addr_len = sizeof(client_addr);
+    
+    int client = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+    if (client < 0) {
+      cerr << "Failed to accept client connection\n";
+      continue;
     }
+    cout << "Client connected\n";
 
-    if (path == "/") {
-      response = "HTTP/1.1 200 OK\r\n\r\n";
-    } else if (path.find("/echo/") == 0) {
-      string content = path.substr(6);
-      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(content.size()) + "\r\n\r\n" + content;
-    } else if (path.find("/user-agent") == 0) {
-      ssize_t agent_start = request.find("User-Agent: ");
-      ssize_t agent_end = request.find("Accept:");
-      string user_agent = request.substr(agent_start + 12, agent_end - (agent_start + 12));
-      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(user_agent.size() - 4) + "\r\n\r\n" + user_agent;
-    } else {
-      response = "HTTP/1.1 404 Not Found\r\n\r\n";
-    }
-
-    send(client, response.c_str(), response.size(), 0);
+    thread(handle_client, client_fd).detach()
   }
 
-  close(client);
   close(server_fd);
-
   return 0;
 }
