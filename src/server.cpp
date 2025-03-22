@@ -86,8 +86,10 @@ int main(int argc, char **argv) {
       string content = path.substr(6);
       response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(content.size()) + "\r\n\r\n" + content;
     } else if (path.find("/user-agent") == 0) {
-      string user_agent = path.substr(11);
-      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(user_agent.size()) + "\r\n\r\n" + user_agent;
+      ssize_t agent_start = request.find("User-Agent: ");
+      ssize_t agent_end = request.find("Accept:");
+      string user_agent = request.substr(agent_start + 12, agent_end - (agent_start + 12));
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(user_agent.size() - 4) + "\r\n\r\n" + user_agent;
     } else {
       response = "HTTP/1.1 404 Not Found\r\n\r\n";
     }
