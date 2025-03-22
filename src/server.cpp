@@ -82,7 +82,11 @@ int main(int argc, char **argv) {
 
     if (path == "/") {
       response = "HTTP/1.1 200 OK\r\n\r\n";
-    } else {
+    } else if (path.find("/echo/") == 0) {
+      string content = path.substr(6);
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_string(content.size()) + "\r\n\r\n" + content;
+    }
+    else {
       response = "HTTP/1.1 404 Not Found\r\n\r\n";
     }
 
