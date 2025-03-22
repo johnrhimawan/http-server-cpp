@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <thread>
 #include <netinet/in.h>
+#include <sstream>
 
 using namespace std;
 
