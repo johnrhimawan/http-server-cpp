@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
     }
     cout << "Client connected\n";
 
-    thread(handle_client, client_fd).detach()
+    thread(handle_client, client_fd).detach();
   }
 
   close(server_fd);
