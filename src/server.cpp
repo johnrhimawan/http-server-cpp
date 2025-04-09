@@ -11,8 +11,6 @@
 #include <netinet/in.h>
 #include <sstream>
 
-using namespace std;
-
 constexpr int PORT = 4221;
 constexpr int BACKLOG = 5;
 constexpr int BUFFER_SIZE = 4096;
@@ -22,20 +20,20 @@ void handle_client(int client_fd) {
   ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
   if (bytes_received <= 0) {
-    cerr << "Failed to receive data or client disconnected.\n";
+    std::cerr << "Failed to receive data or client disconnected.\n";
     close(client_fd);
     return;
   }
 
   buffer[bytes_received] = '\0';
-  string request(buffer);
-  cout << "Received request:\n" << request << endl;
+  std::string request(buffer);
+  std::cout << "Received request:\n" << request << std::endl;
 
-  istringstream request_stream(request);
-  string method, path, http_version;
+  std::istringstream request_stream(request);
+  std::string method, path, http_version;
   request_stream >> method >> path >> http_version;
 
-  string response;
+  std::string response;
 
   if (method != "GET") {
       response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
@@ -66,12 +64,12 @@ void handle_client(int client_fd) {
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
-  cout << unitbuf;
-  cerr << unitbuf;
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
   
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
-   cerr << "Failed to create server socket\n";
+   std::cerr << "Failed to create server socket\n";
    return 1;
   }
   
@@ -79,7 +77,7 @@ int main(int argc, char **argv) {
   // // ensures that we don't run into 'Address already in use' errors
   int reuse = 1;
   if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-    cerr << "setsockopt failed\n";
+    std::cerr << "setsockopt failed\n";
     return 1;
   }
   
@@ -89,17 +87,17 @@ int main(int argc, char **argv) {
   server_addr.sin_port = htons(PORT);
   
   if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
-    cerr << "Failed to bind to port " << PORT << "\n";
+    std::cerr << "Failed to bind to port " << PORT << "\n";
     return 1;
   }
   
   if (listen(server_fd, BACKLOG) != 0) {
-    cerr << "Listen failed\n";
+    std::cerr << "Listen failed\n";
     return 1;
   }
   
-  cout << "Server is listening on port " << PORT << "...\n";
-  cout << "Waiting for a client to connect...\n";
+  std::cout << "Server is listening on port " << PORT << "...\n";
+  std::cout << "Waiting for a client to connect...\n";
 
   while (true) {
     struct sockaddr_in client_addr;
@@ -107,12 +105,12 @@ int main(int argc, char **argv) {
     
     int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
     if (client_fd < 0) {
-      cerr << "Failed to accept client connection\n";
+      std::cerr << "Failed to accept client connection\n";
       continue;
     }
-    cout << "Client connected\n";
+    std::cout << "Client connected\n";
 
-    thread(handle_client, client_fd).detach();
+    std::thread(handle_client, client_fd).detach();
   }
 
   close(server_fd);
