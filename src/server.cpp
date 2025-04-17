@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  std::string dir;
   if (argc == 3 && strcmp(argv[1], "--directory") == 0) {
     dir = argv[2];
   } else if (argc == 1) {
