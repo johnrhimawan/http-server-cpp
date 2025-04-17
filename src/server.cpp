@@ -61,7 +61,8 @@ void handle_client(int client_fd, const std::string& directory) {
           send(client_fd, "HTTP/1.1 500 Internal Server Error\r\n\r\n", 34, 0);
       } else {
           out << body;
-          send(client_fd, "HTTP/1.1 201 Created\r\n\r\n", 21, 0);
+          std::string created = "HTTP/1.1 201 Created\r\n\r\n";
+          send(client_fd, created.c_str(), created.size(), 0);
       }
       close(client_fd);
       return;
