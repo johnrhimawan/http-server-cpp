@@ -9,13 +9,14 @@
 #include <netdb.h>
 #include <thread>
 #include <netinet/in.h>
+#include <fstream>
 #include <sstream>
 
 constexpr int PORT = 4221;
 constexpr int BACKLOG = 5;
 constexpr int BUFFER_SIZE = 4096;
 
-void handle_client(int client_fd) {
+void handle_client(int client_fd, const std::string& directory) {
   char buffer[BUFFER_SIZE] = {0};
   ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
@@ -36,26 +37,48 @@ void handle_client(int client_fd) {
   std::string response;
 
   if (method != "GET") {
-      response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
+    response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
   } else if (path == "/") {
-      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
+    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
+  } else if (path.rfind("/files/", 0) == 0) {
+    std::string filename = path.substr(7);
+    std::string fullpath = directory;
+    if (fullpath.back() != '/') {
+      fullpath += '/';
+    }
+    fullpath += filename;
+
+    std::ifstream infile(fullpath, std::ios::binary);
+    if (!infile) {
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    } else {
+      std::ostringstream buf;
+      buf << infile.rdbuf();
+      std::string body = buf.str();
+
+      response  = "HTTP/1.1 200 OK\r\n";
+      response += "Content-Type: application/octet-stream\r\n";
+      response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+      response += "\r\n";
+      response += body;
+    }
   } else if (path.find("/echo/") == 0) {
-      std::string content = path.substr(6);
-      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
-              + std::to_string(content.size()) + "\r\n\r\n" + content;
+    std::string content = path.substr(6);
+    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
+            + std::to_string(content.size()) + "\r\n\r\n" + content;
   } else if (path == "/user-agent") {
-      size_t agent_start = request.find("User-Agent: ");
-      if (agent_start != std::string::npos) {
-          agent_start += 12;
-          size_t agent_end = request.find("\r\n", agent_start);
-          std::string user_agent = request.substr(agent_start, agent_end - agent_start);
-          response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
-                  + std::to_string(user_agent.size()) + "\r\n\r\n" + user_agent;
+    size_t agent_start = request.find("User-Agent: ");
+    if (agent_start != std::string::npos) {
+        agent_start += 12;
+        size_t agent_end = request.find("\r\n", agent_start);
+        std::string user_agent = request.substr(agent_start, agent_end - agent_start);
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
+                + std::to_string(user_agent.size()) + "\r\n\r\n" + user_agent;
       } else {
-          response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        response = "HTTP/1.1 400 Bad Request\r\n\r\n";
       }
   } else {
-      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
 
   send(client_fd, response.c_str(), response.size(), 0);
@@ -66,7 +89,13 @@ int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
-  
+
+  if (argc != 3 || strcmp(argv[1], "--directory") != 0) {
+    std::cerr << "Usage: " << argv[0] << " --directory <path>\n";
+    return 1;
+  } 
+  std::string dir = argv[2];
+
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
    std::cerr << "Failed to create server socket\n";
@@ -110,7 +139,9 @@ int main(int argc, char **argv) {
     }
     std::cout << "Client connected\n";
 
-    std::thread(handle_client, client_fd).detach();
+    std::thread([client_fd, dir]() {
+      handle_client(client_fd, dir);
+    }).detach();
   }
 
   close(server_fd);
