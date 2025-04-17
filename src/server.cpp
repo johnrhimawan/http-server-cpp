@@ -17,98 +17,102 @@ constexpr int BACKLOG = 5;
 constexpr int BUFFER_SIZE = 4096;
 
 void handle_client(int client_fd, const std::string& directory) {
-  char buffer[BUFFER_SIZE] = {0};
-  ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-
-  if (bytes_received <= 0) {
-    std::cerr << "Failed to receive data or client disconnected.\n";
-    close(client_fd);
-    return;
+  // Receive raw request into a string
+  std::string request;
+  char buffer[BUFFER_SIZE];
+  ssize_t bytes;
+  // Read until we have at least the header terminator
+  while ((bytes = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+      request.append(buffer, bytes);
+      if (request.find("\r\n\r\n") != std::string::npos)
+          break;
   }
-
-  buffer[bytes_received] = '\0';
-  std::string request(buffer);
+  if (bytes < 0) {
+      std::cerr << "Error reading request\n";
+      close(client_fd);
+      return;
+  }
   std::cout << "Received request:\n" << request << std::endl;
 
-  std::istringstream request_stream(request);
+  // Parse request line
+  std::istringstream req_stream(request);
   std::string method, path, http_version;
-  request_stream >> method >> path >> http_version;
+  req_stream >> method >> path >> http_version;
 
+  // POST /files/{filename}
   if (method == "POST" && !directory.empty() && path.rfind("/files/", 0) == 0) {
-    std::string filename = path.substr(7);
-    std::string fullpath = directory;
-    if (!fullpath.empty() && fullpath.back() != '/') {
-      fullpath += "/";
-    }
-    fullpath += filename;
+      std::string filename = path.substr(7);
+      std::string fullpath = directory;
+      if (!fullpath.empty() && fullpath.back() != '/') fullpath += '/';
+      fullpath += filename;
 
-    auto hdr_end = request.find("\r\n\r\n");
-    if (hdr_end == std::string::npos) {
-      send(client_fd, "HTTP/1.1 400 Bad Request\r\n\r\n", strlen("HTTP/1.1 400 Bad Request\r\n\r\n"), 0);
-    }
-    close(client_fd);
-    return;
-  }
-
-  std::string body = request.substr(hdr_end + 4);
-  std::ofstream out(fullpath, std::ios::binary);
-  if (!out) {
-    send(client_fd, "HTTP/1.1 500 Internal Server Error\r\n\r\n", strlen("HTTP/1.1 500 Internal Server Error\r\n\r\n"), 0);
-  } else {
-    out << body;
-    out.close();
-
-    send(client_fd, "HTTP/1.1 201 Created\r\n\r\n", strlen("HTTP/1.1 201 Created\r\n\r\n"), 0);
-  }
-
-  close(client_fd);
-  return;
- 
-  std::string response;
-
-  if (method != "GET") {
-    response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
-  } else if (path == "/") {
-    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
-  } else if (path.rfind("/files/", 0) == 0) {
-    std::string filename = path.substr(7);
-    std::string fullpath = directory;
-    if (fullpath.back() != '/') {
-      fullpath += '/';
-    }
-    fullpath += filename;
-
-    std::ifstream infile(fullpath, std::ios::binary);
-    if (!infile) {
-      response = "HTTP/1.1 404 Not Found\r\n\r\n";
-    } else {
-      std::ostringstream buf;
-      buf << infile.rdbuf();
-      std::string body = buf.str();
-
-      response  = "HTTP/1.1 200 OK\r\n";
-      response += "Content-Type: application/octet-stream\r\n";
-      response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
-      response += "\r\n";
-      response += body;
-    }
-  } else if (path.find("/echo/") == 0) {
-    std::string content = path.substr(6);
-    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
-            + std::to_string(content.size()) + "\r\n\r\n" + content;
-  } else if (path == "/user-agent") {
-    size_t agent_start = request.find("User-Agent: ");
-    if (agent_start != std::string::npos) {
-        agent_start += 12;
-        size_t agent_end = request.find("\r\n", agent_start);
-        std::string user_agent = request.substr(agent_start, agent_end - agent_start);
-        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " 
-                + std::to_string(user_agent.size()) + "\r\n\r\n" + user_agent;
-      } else {
-        response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+      auto hdr_end = request.find("\r\n\r\n");
+      if (hdr_end == std::string::npos) {
+          send(client_fd, "HTTP/1.1 400 Bad Request\r\n\r\n", 28, 0);
+          close(client_fd);
+          return;
       }
-  } else {
-    response = "HTTP/1.1 404 Not Found\r\n\r\n";
+      // Extract body after headers
+      std::string body = request.substr(hdr_end + 4);
+
+      // Write to file
+      std::ofstream out(fullpath, std::ios::binary);
+      if (!out) {
+          send(client_fd, "HTTP/1.1 500 Internal Server Error\r\n\r\n", 34, 0);
+      } else {
+          out << body;
+          send(client_fd, "HTTP/1.1 201 Created\r\n\r\n", 21, 0);
+      }
+      close(client_fd);
+      return;
+  }
+
+  // GET and other methods
+  std::string response;
+  if (method != "GET") {
+      response = "HTTP/1.1 405 Method Not Allowed\r\n\r\n";
+  }
+  else if (path == "/") {
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n";
+  }
+  else if (!directory.empty() && path.rfind("/files/", 0) == 0) {
+      std::string filename = path.substr(7);
+      std::string fullpath = directory;
+      if (fullpath.back() != '/') fullpath += '/';
+      fullpath += filename;
+
+      std::ifstream infile(fullpath, std::ios::binary);
+      if (!infile) {
+          response = "HTTP/1.1 404 Not Found\r\n\r\n";
+      } else {
+          std::ostringstream buf;
+          buf << infile.rdbuf();
+          std::string body = buf.str();
+          response = "HTTP/1.1 200 OK\r\n";
+          response += "Content-Type: application/octet-stream\r\n";
+          response += "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n";
+          response += body;
+      }
+  }
+  else if (path.rfind("/echo/", 0) == 0) {
+      std::string content = path.substr(6);
+      response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                  + std::to_string(content.size()) + "\r\n\r\n" + content;
+  }
+  else if (path == "/user-agent") {
+      auto pos = request.find("User-Agent: ");
+      if (pos != std::string::npos) {
+          pos += 12;
+          auto end = request.find("\r\n", pos);
+          std::string ua = request.substr(pos, end - pos);
+          response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                      + std::to_string(ua.size()) + "\r\n\r\n" + ua;
+      } else {
+          response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+      }
+  }
+  else {
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
 
   send(client_fd, response.c_str(), response.size(), 0);
