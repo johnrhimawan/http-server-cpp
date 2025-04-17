@@ -34,6 +34,36 @@ void handle_client(int client_fd, const std::string& directory) {
   std::string method, path, http_version;
   request_stream >> method >> path >> http_version;
 
+  if (method == "POST" && !directory.empty() && path.rfind("/files/", 0) == 0) {
+    std::string filename = path.substr(7);
+    std::string fullpath = directory;
+    if (!fullpath.empty() && fullpath.back() != '/') {
+      fullpath += "/";
+    }
+    fullpath += filename
+
+    auto hdr_end = request.find("\r\n\r\n");
+    if (hdr_end == std::string::npos) {
+      send(client_fd, "HTTP/1.1 400 Bad Request\r\n\r\n", strlen("HTTP/1.1 400 Bad Request\r\n\r\n"), 0);
+    }
+    close(client_fd);
+    return;
+  }
+
+  std::string body = request.substr(hdr_end + 4);
+  std::ofstream out(fullpath, std::ios::binary);
+  if (!out) {
+    send(client_fd, "HTTP/1.1 500 Internal Server Error\r\n\r\n", strlen("HTTP/1.1 500 Internal Server Error\r\n\r\n"), 0);
+  } else {
+    out << body;
+    out.close();
+
+    send(client_fd, "HTTP/1.1 201 Created\r\n\r\n", strlen("HTTP/1.1 201 Created\r\n\r\n"), 0);
+  }
+
+  close(client_fd);
+  return;
+ 
   std::string response;
 
   if (method != "GET") {
