@@ -40,7 +40,7 @@ void handle_client(int client_fd, const std::string& directory) {
     if (!fullpath.empty() && fullpath.back() != '/') {
       fullpath += "/";
     }
-    fullpath += filename
+    fullpath += filename;
 
     auto hdr_end = request.find("\r\n\r\n");
     if (hdr_end == std::string::npos) {
