@@ -90,16 +90,13 @@ int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  if (argc != 3 || strcmp(argv[1], "--directory") != 0) {
-    std::cerr << "Usage: " << argv[0] << " --directory <path>\n";
+  if (argc == 3 && strcmp(argv[1], "--directory") == 0) {
+    dir = argv[2];
+  } else if (argc == 1) {
+    dir = "";
+  } else {
+    std::cerr << "Usage: " << argv[0] << " [--directory <path>]\n";
     return 1;
-  } 
-  std::string dir = argv[2];
-
-  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd < 0) {
-   std::cerr << "Failed to create server socket\n";
-   return 1;
   }
   
   // // Since the tester restarts your program quite often, setting SO_REUSEADDR
